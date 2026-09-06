@@ -87,10 +87,19 @@ public class Settings
     ];
 
     /// <summary>
-    /// Skip meshes under actors\. Their markers are eye glows, which would put
-    /// a light on every draugr and dragon priest in the game.
+    /// Skip meshes under actors\. Their markers are eye glows and wisp bodies,
+    /// so this puts a light on every draugr, dragon priest and witchlight --
+    /// one per actor, since each of those meshes carries a single marker.
     /// </summary>
-    public bool SkipActorMeshes = true;
+    public bool SkipActorMeshes = false;
+
+    /// <summary>
+    /// Skip models that another LightPlacer JSON already covers, so an object
+    /// does not get two lights stacked on it. Everything under
+    /// [Data]\LightPlacer\**\*.json is read except this patcher's own output --
+    /// excluding that would make every run after the first emit nothing.
+    /// </summary>
+    public bool SkipModelsCoveredElsewhere = true;
 
     /// <summary>
     /// Per-model overrides, applied after the estimate. Nothing in a mesh

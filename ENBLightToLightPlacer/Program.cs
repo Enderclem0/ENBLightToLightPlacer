@@ -102,9 +102,15 @@ public class Program
         var models = CollectModelPaths(state);
         Console.WriteLine($"{models.Count} distinct model paths referenced by records");
 
+        var ownOutput = Path.GetFullPath(
+            Path.Combine(state.DataFolderPath.Path, Config.OutputJsonPath));
+        var alreadyCovered = Config.SkipModelsCoveredElsewhere
+            ? ModelsCoveredElsewhere(state.DataFolderPath.Path, ownOutput)
+            : new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
         var assets = new AssetResolver(state.GameRelease, state.DataFolderPath);
         var entries = new List<LightEntry>();
-        int read = 0, withMarker = 0, flagged = 0;
+        int read = 0, withMarker = 0, flagged = 0, skippedCovered = 0;
 
         foreach (var model in models.OrderBy(m => m, StringComparer.OrdinalIgnoreCase))
         {
@@ -113,6 +119,11 @@ public class Program
             if (Config.ExcludePathsContaining.Any(x =>
                     x.Length > 0 && model.Contains(x, StringComparison.OrdinalIgnoreCase)))
                 continue;
+            if (alreadyCovered.Contains(model))
+            {
+                skippedCovered++;
+                continue;
+            }
 
             var bytes = assets.Read(Path.Combine("meshes", model));
             if (bytes == null) continue;
@@ -208,8 +219,64 @@ public class Program
         Console.WriteLine();
         Console.WriteLine($"read {read} meshes, {withMarker} carried an ENB marker, "
                           + $"{entries.Sum(e => e.Lights.Count)} lights, {flagged} flagged for review");
+        if (skippedCovered > 0)
+            Console.WriteLine($"{skippedCovered} models skipped: already covered by another LightPlacer JSON");
 
         WriteJson(state, entries);
+    }
+
+    /// <summary>
+    /// Models any other LightPlacer JSON already places a light on. Light Placer
+    /// applies every JSON it finds, so emitting a model CS Light already covers
+    /// stacks two lights on the same object.
+    ///
+    /// This patcher's own output is excluded by path -- it lives in the same
+    /// tree, and counting it would make every run after the first emit nothing.
+    /// </summary>
+    private static HashSet<string> ModelsCoveredElsewhere(string dataFolder, string ownOutput)
+    {
+        var covered = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var root = Path.Combine(dataFolder, "LightPlacer");
+        if (!Directory.Exists(root)) return covered;
+
+        var ownName = Path.GetFileName(ownOutput);
+        foreach (var file in Directory.EnumerateFiles(root, "*.json", SearchOption.AllDirectories))
+        {
+            if (Path.GetFullPath(file).Equals(ownOutput, StringComparison.OrdinalIgnoreCase)) continue;
+            if (Path.GetFileName(file).Equals(ownName, StringComparison.OrdinalIgnoreCase)) continue;
+
+            int before = covered.Count;
+            try
+            {
+                // These ship from other mods; a BOM or a trailing comma is not
+                // our problem to fail on.
+                var text = File.ReadAllText(file);   // strips a UTF-8 BOM itself
+                using var doc = JsonDocument.Parse(text, new JsonDocumentOptions
+                {
+                    AllowTrailingCommas = true,
+                    CommentHandling = JsonCommentHandling.Skip,
+                });
+                foreach (var entry in doc.RootElement.EnumerateArray())
+                {
+                    if (!entry.TryGetProperty("models", out var models)) continue;
+                    foreach (var m in models.EnumerateArray())
+                    {
+                        var path = m.GetString();
+                        if (string.IsNullOrWhiteSpace(path)) continue;
+                        covered.Add(path.Replace('/', '\\').TrimStart('\\').ToLowerInvariant());
+                    }
+                }
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"  ! could not read {Path.GetFileName(file)}: {ex.GetType().Name}");
+                continue;
+            }
+            Console.WriteLine($"  covered elsewhere: {covered.Count - before} models from "
+                              + $"{Path.GetFileName(file)}");
+        }
+        Console.WriteLine($"{covered.Count} models already covered by other LightPlacer JSONs");
+        return covered;
     }
 
     private static float EstimateRadius(float half)
