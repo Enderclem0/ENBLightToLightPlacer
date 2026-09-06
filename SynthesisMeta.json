@@ -1,0 +1,14 @@
+{
+  "Nickname": "ENBLightToLightPlacer",
+  "Visibility": "Visible",
+  "OneLineDescription": "",
+  "LongDescription": "",
+  "PreferredAutoVersioning": "Default",
+  "RequiredMods": [],
+  "TargetedReleases": [
+    "SkyrimSE",
+    "EnderalSE",
+    "SkyrimSEGog",
+    "EnderalSEGog"
+  ]
+}
