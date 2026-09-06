@@ -110,6 +110,9 @@ public class Program
         {
             if (Config.SkipActorMeshes && model.StartsWith(@"actors\", StringComparison.OrdinalIgnoreCase))
                 continue;
+            if (Config.ExcludePathsContaining.Any(x =>
+                    x.Length > 0 && model.Contains(x, StringComparison.OrdinalIgnoreCase)))
+                continue;
 
             var bytes = assets.Read(Path.Combine("meshes", model));
             if (bytes == null) continue;
@@ -128,6 +131,13 @@ public class Program
             var lights = new List<Light>();
             foreach (var marker in markers)
             {
+                // A marker with no extent gives a zero-radius light: an entry that
+                // costs a light slot and illuminates nothing.
+                if (marker.HalfSize <= 0)
+                {
+                    Console.WriteLine($"  ~ {model}: marker has no extent, skipped");
+                    continue;
+                }
                 if (marker.Note.Length > 0)
                 {
                     flagged++;
@@ -159,8 +169,40 @@ public class Program
                 });
             }
 
+            if (lights.Count == 0) continue;
             entries.Add(new LightEntry { Lights = lights, Models = [model] });
             Console.WriteLine($"  + {model}  ({lights.Count} light{(lights.Count == 1 ? "" : "s")})");
+        }
+
+        // Meshes the ENB mods never patched, borrowing a light from the mesh that
+        // is the same object. See Settings.Aliases.
+        var byModel = entries.ToDictionary(e => e.Models[0], StringComparer.OrdinalIgnoreCase);
+        foreach (var alias in Config.Aliases)
+        {
+            if (alias.Target.Length == 0 || alias.Source.Length == 0) continue;
+            if (byModel.ContainsKey(alias.Target)) continue;
+            if (!byModel.TryGetValue(alias.Source, out var source))
+            {
+                Console.WriteLine($"  ~ alias {alias.Target}: source {alias.Source} produced no light");
+                continue;
+            }
+            entries.Add(new LightEntry
+            {
+                Lights = source.Lights.Select(l => new Light
+                {
+                    Data = new LightData
+                    {
+                        Light = l.Data.Light,
+                        Color = (int[])l.Data.Color.Clone(),
+                        Fade = l.Data.Fade,
+                        Radius = l.Data.Radius,
+                        Flags = l.Data.Flags,
+                    },
+                    Points = l.Points.Select(pt => (float[])pt.Clone()).ToList(),
+                }).ToList(),
+                Models = [alias.Target.ToLowerInvariant()],
+            });
+            Console.WriteLine($"  + {alias.Target}  (alias of {alias.Source})");
         }
 
         Console.WriteLine();
@@ -173,8 +215,11 @@ public class Program
     private static float EstimateRadius(float half)
     {
         if (half <= 0) return 0;
-        return Config.RadiusBase
-               * MathF.Pow(half / Config.RadiusReferenceHalfSize, Config.RadiusExponent);
+        var estimate = Config.RadiusBase
+                       * MathF.Pow(half / Config.RadiusReferenceHalfSize, Config.RadiusExponent);
+        return Config.MaxEstimatedRadius > 0
+            ? MathF.Min(estimate, Config.MaxEstimatedRadius)
+            : estimate;
     }
 
     /// <summary>Every model path any record points at, deduplicated.</summary>
@@ -190,7 +235,7 @@ public class Program
             if (clean.StartsWith(@"meshes\", StringComparison.OrdinalIgnoreCase))
                 clean = clean[7..];
             if (clean.EndsWith(".nif", StringComparison.OrdinalIgnoreCase))
-                models.Add(clean);
+                models.Add(clean.ToLowerInvariant());
         }
         return models;
     }
@@ -198,9 +243,10 @@ public class Program
     private static void WriteJson(
         IPatcherState<ISkyrimMod, ISkyrimModGetter> state, List<LightEntry> entries)
     {
-        var root = Path.GetDirectoryName(state.OutputPath)
-                   ?? throw new InvalidOperationException("no output directory");
-        var target = Path.Combine(root, Config.OutputJsonPath);
+        // Against the Data folder, not the plugin's folder: Synthesis copies only
+        // the .esp out of its staging workspace, so anything written beside the
+        // plugin is stranded in a temp directory. Under MO2 this lands in Overwrite.
+        var target = Path.Combine(state.DataFolderPath.Path, Config.OutputJsonPath);
         Directory.CreateDirectory(Path.GetDirectoryName(target)!);
 
         var json = JsonSerializer.Serialize(entries, new JsonSerializerOptions
