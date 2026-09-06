@@ -33,6 +33,17 @@ public static partial class MarkerDetector
     [GeneratedRegex(@"enb.{0,3}(particle)?light", RegexOptions.IgnoreCase)]
     private static partial Regex MarkerName();
 
+    /// <summary>
+    /// These mods pair the light quad with a *visible* glow sprite, named for
+    /// it: firefly.nif carries EnbParticleLight01 (the emitter, half-size 126)
+    /// beside EnbParticleLightGlow01 (the sprite, half-size 17, on
+    /// FXGlowSpotLinearAlpha.dds). The sprite is not a light, and it only ever
+    /// reached us through the node-name fallback below. Matched against node
+    /// names only -- the marker texture fxglowENB.dds contains "glow" too.
+    /// </summary>
+    [GeneratedRegex(@"glow", RegexOptions.IgnoreCase)]
+    private static partial Regex GlowCompanionName();
+
     public static List<Marker> Find(Nif nif)
     {
         var transforms = WorldTransforms(nif);
@@ -58,6 +69,7 @@ public static partial class MarkerDetector
             string basename = shader.SourceTexture.Split('\\').Last();
             string names = string.Join(' ', placed.Chain.TakeLast(2).Append(shape.Name));
             if (!MarkerTextures.Contains(basename) && !MarkerName().IsMatch(names)) continue;
+            if (GlowCompanionName().IsMatch(names)) continue;
 
             byte[] vertex = [255, 255, 255, 255];
             if (shape.Colors.Count > 0)

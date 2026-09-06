@@ -60,6 +60,13 @@ public class Settings
     public float MaxEstimatedRadius = 120f;
 
     /// <summary>
+    /// Floor on the estimated radius. The power law was fitted from half-size
+    /// 80 upward; below that it collapses toward zero, and a sub-unit radius is
+    /// a light slot spent on something nobody can see. Set 0 to extrapolate.
+    /// </summary>
+    public float MinEstimatedRadius = 6f;
+
+    /// <summary>
     /// Model paths containing any of these are ignored. PGPatcher keeps working
     /// copies under _pgpatcher_dups\ that no record actually loads.
     /// </summary>

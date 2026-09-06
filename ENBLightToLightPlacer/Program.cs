@@ -217,9 +217,9 @@ public class Program
         if (half <= 0) return 0;
         var estimate = Config.RadiusBase
                        * MathF.Pow(half / Config.RadiusReferenceHalfSize, Config.RadiusExponent);
-        return Config.MaxEstimatedRadius > 0
-            ? MathF.Min(estimate, Config.MaxEstimatedRadius)
-            : estimate;
+        if (Config.MaxEstimatedRadius > 0) estimate = MathF.Min(estimate, Config.MaxEstimatedRadius);
+        if (Config.MinEstimatedRadius > 0) estimate = MathF.Max(estimate, Config.MinEstimatedRadius);
+        return estimate;
     }
 
     /// <summary>Every model path any record points at, deduplicated.</summary>
