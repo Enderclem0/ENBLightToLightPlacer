@@ -1,8 +1,8 @@
 {
   "Nickname": "ENBLightToLightPlacer",
   "Visibility": "Visible",
-  "OneLineDescription": "",
-  "LongDescription": "",
+  "OneLineDescription": "Ports ENB particle-light meshes to Light Placer JSON for Community Shaders.",
+  "LongDescription": "Community Shaders has no particle-light reader, so ENB Light / Particle Lights for ENB meshes are inert. This reads their marker quads and emits Light Placer JSON: position, colour and fade come from the mesh; radius is estimated and tunable, since the mesh does not carry it.",
   "PreferredAutoVersioning": "Default",
   "RequiredMods": [],
   "TargetedReleases": [
