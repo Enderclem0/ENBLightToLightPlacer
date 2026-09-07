@@ -114,7 +114,7 @@ public sealed class Nif
     }
 
     public readonly record struct EffectShader(
-        string SourceTexture, float[] EmissiveColor, float EmissiveMultiple);
+        string SourceTexture, float[] EmissiveColor, float EmissiveMultiple, int ControllerRef);
 
     public EffectShader ReadEffectShader(int i)
     {
@@ -122,7 +122,7 @@ public sealed class Nif
         c.Skip(4);                                  // name
         int extras = (int)c.U32();
         c.Skip(4 * extras);
-        c.Skip(4);                                  // controller
+        int controller = c.I32();
         c.Skip(4 + 4);                              // shader flags 1 and 2
         c.Skip(8 + 8);                              // uv offset, uv scale
         string source = c.SizedString();
@@ -130,7 +130,40 @@ public sealed class Nif
         c.Skip(16);                                 // falloff start/stop/opacities
         var colour = new[] { c.F32(), c.F32(), c.F32(), c.F32() };
         float multiple = c.F32();
-        return new EffectShader(source, colour, multiple);
+        return new EffectShader(source, colour, multiple, controller);
+    }
+
+    /// <summary>
+    /// Is the emissive multiple animated rather than static?
+    ///
+    /// The Dwemer control cubes ship emissiveMultiple = 0 with a
+    /// BSEffectShaderPropertyFloatController driving it, so reading the static
+    /// field alone yields a light that emits nothing. The curve itself is not
+    /// recoverable here -- the controller points at a NiBlendFloatInterpolator
+    /// whose value is the -3.4e38 "unset" sentinel, because the real keys live
+    /// in one of the NiControllerSequence blocks the animation system picks at
+    /// runtime -- so this only reports *that* it is animated. The caller
+    /// substitutes a constant.
+    ///
+    /// Layout: NiTimeController is 26 bytes (next, flags, frequency, phase,
+    /// start, stop, target), NiSingleInterpController adds the interpolator
+    /// ref, and the controlled-variable enum follows at 30. Variable 0 is the
+    /// emissive multiple; confirmed against the control cube, whose tail reads
+    /// 00000000.
+    /// </summary>
+    public bool HasAnimatedEmissiveMultiple(int controllerRef)
+    {
+        int guard = 0;
+        for (int c = controllerRef; c >= 0 && c < BlockCount && guard++ < 32;)
+        {
+            var b = Block(c);
+            if (b.Length < 34) break;
+            if (BlockType(c) == "BSEffectShaderPropertyFloatController"
+                && BinaryPrimitives.ReadUInt32LittleEndian(b[30..]) == 0)
+                return true;
+            c = BinaryPrimitives.ReadInt32LittleEndian(b);   // nextController
+        }
+        return false;
     }
 
     public sealed class Shape

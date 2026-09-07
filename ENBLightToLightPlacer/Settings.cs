@@ -60,6 +60,16 @@ public class Settings
     public float MaxEstimatedRadius = 120f;
 
     /// <summary>
+    /// Fade to use when a marker's emissive multiple is 0 but a controller
+    /// animates it -- the Dwemer control cubes, whose glow is driven by an
+    /// animation sequence. The curve is not readable from the mesh (the
+    /// interpolator holds an "unset" sentinel and the keys live in a
+    /// NiControllerSequence chosen at runtime), so this is a stand-in for a
+    /// value we cannot measure. Set 0 to skip those markers instead.
+    /// </summary>
+    public float AnimatedEmissiveFade = 1.0f;
+
+    /// <summary>
     /// Floor on the estimated radius. The power law was fitted from half-size
     /// 80 upward; below that it collapses toward zero, and a sub-unit radius is
     /// a light slot spent on something nobody can see. Set 0 to extrapolate.
