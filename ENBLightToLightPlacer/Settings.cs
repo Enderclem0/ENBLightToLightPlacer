@@ -60,6 +60,34 @@ public class Settings
     public float MaxEstimatedRadius = 120f;
 
     /// <summary>
+    /// Read the second ENB Light convention: dedicated particle systems that
+    /// render nothing and exist only to emit. Detection follows the rules the
+    /// renderer keys on (additive blending, non-zero emissive, a blank
+    /// texture), not node names.
+    /// </summary>
+    public bool EmitParticleSystemLights = true;
+
+    /// <summary>
+    /// Game units of light radius per unit of particle size.
+    ///
+    /// This is genuinely not in the meshes: ENB's own radius depends on preset
+    /// config (DistanceFade, EnableBigRange), so it was always a global. It is
+    /// deliberately conservative, because ENB lights are screen-space,
+    /// distance-faded, and were designed to sit on top of vanilla lights that
+    /// ENB Light's ESP halves -- Light Placer's are persistent and real, and
+    /// nothing here halves the vanilla lights, so ours are pure addition.
+    /// </summary>
+    public float RadiusPerParticleSizeUnit = 2.0f;
+
+    /// <summary>
+    /// Particle size past which ENB gives no further coverage: "Values above
+    /// about 100 or so for Initial Size will make a bigger particle but will
+    /// not increase light coverage." Every fire mesh measured 128 and so
+    /// clamps here, which is why their authored radii scatter meaninglessly.
+    /// </summary>
+    public float ParticleSizeSaturation = 100f;
+
+    /// <summary>
     /// Transcribe a mesh's emissive keyframes into Light Placer's fadeController
     /// so the light pulses the way the glow does, instead of sitting at a
     /// constant. Light Placer's format is a direct match for NiFloatData.

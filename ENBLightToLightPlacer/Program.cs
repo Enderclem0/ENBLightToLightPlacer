@@ -94,11 +94,20 @@ public class Program
         {
             var bytes = assets.Read(rel);
             if (bytes == null) { Console.WriteLine($"  MISS {rel}"); continue; }
-            var markers = MarkerDetector.Find(new Nif(bytes));
-            Console.WriteLine($"  ok   {rel}  {bytes.Length} bytes, {markers.Count} marker(s)");
+            var parsed = new Nif(bytes);
+
+            var markers = MarkerDetector.Find(parsed);
+            int quads = markers.Count;
+            markers.AddRange(ParticleLights.Find(parsed, 2.0f, 100f,
+                m => Console.WriteLine($"         reject {m}")));
+
+            Console.WriteLine($"  ok   {rel}  {bytes.Length} bytes, "
+                              + $"{quads} quad marker(s), {markers.Count - quads} particle light(s)");
             foreach (var m in markers)
                 Console.WriteLine($"         colour=({string.Join(',', m.Color)}) fade={m.Fade} "
-                                  + $"point=({string.Join(',', m.Point)}) half={m.HalfSize}");
+                                  + $"point=({string.Join(',', m.Point)}) size={m.HalfSize}"
+                                  + (m.RadiusOverride is { } r ? $" radius={r}" : "")
+                                  + $"  tex={m.Texture}");
         }
         return 0;
     }
@@ -116,7 +125,8 @@ public class Program
 
         var assets = new AssetResolver(state.GameRelease, state.DataFolderPath);
         var entries = new List<LightEntry>();
-        int read = 0, withMarker = 0, flagged = 0, skippedCovered = 0, animatedFade = 0, animatedCurves = 0;
+        int read = 0, withMarker = 0, flagged = 0, skippedCovered = 0, animatedFade = 0,
+            animatedCurves = 0, particleLights = 0;
 
         foreach (var model in models.OrderBy(m => m, StringComparer.OrdinalIgnoreCase))
         {
@@ -136,7 +146,14 @@ public class Program
             read++;
 
             List<Marker> markers;
-            try { markers = MarkerDetector.Find(new Nif(bytes)); }
+            try
+            {
+                var parsed = new Nif(bytes);
+                markers = MarkerDetector.Find(parsed);
+                if (Config.EmitParticleSystemLights)
+                    markers.AddRange(ParticleLights.Find(
+                        parsed, Config.RadiusPerParticleSizeUnit, Config.ParticleSizeSaturation));
+            }
             catch (Exception ex)
             {
                 Console.WriteLine($"  ! {model}: {ex.GetType().Name}");
@@ -161,7 +178,7 @@ public class Program
                     Console.WriteLine($"  ? {model}: {marker.Note}, colour {string.Join(',', marker.Color)}");
                 }
 
-                float radius = EstimateRadius(marker.HalfSize);
+                float radius = marker.RadiusOverride ?? EstimateRadius(marker.HalfSize);
                 float fade = marker.Fade;
                 if (marker.EmissiveIsAnimated)
                 {
@@ -202,6 +219,8 @@ public class Program
                     fade = 1.0f;
                     animatedCurves++;
                 }
+
+                if (marker.RadiusOverride.HasValue) particleLights++;
 
                 lights.Add(new Light
                 {
@@ -257,6 +276,8 @@ public class Program
         Console.WriteLine();
         Console.WriteLine($"read {read} meshes, {withMarker} carried an ENB marker, "
                           + $"{entries.Sum(e => e.Lights.Count)} lights, {flagged} flagged for review");
+        if (particleLights > 0)
+            Console.WriteLine($"{particleLights} of those came from the particle-system convention");
         if (animatedCurves > 0)
             Console.WriteLine($"{animatedCurves} lights got a fadeController read from the mesh");
         if (animatedFade > 0)

@@ -13,7 +13,8 @@ public sealed record Marker(
     string Note,
     bool EmissiveIsAnimated,
     List<Nif.FloatKey>? FadeKeys,
-    string FadeInterpolation);
+    string FadeInterpolation,
+    float? RadiusOverride);
 
 /// <summary>
 /// Finds ENB particle-light marker quads and converts what they encode into
@@ -52,7 +53,7 @@ public static partial class MarkerDetector
 
     public static List<Marker> Find(Nif nif)
     {
-        var transforms = WorldTransforms(nif);
+        var transforms = Nif.WorldTransforms(nif);
         var found = new List<Marker>();
 
         foreach (var shape in nif.ReadShapes())
@@ -70,7 +71,7 @@ public static partial class MarkerDetector
 
             var shader = nif.ReadEffectShader(shape.ShaderRef);
             transforms.TryGetValue(shape.Index, out var placed);
-            placed ??= new Placement([1, 0, 0, 0, 1, 0, 0, 0, 1], 1f, [0, 0, 0], []);
+            placed ??= new Nif.Placement([1, 0, 0, 0, 1, 0, 0, 0, 1], 1f, [0, 0, 0], []);
 
             string basename = shader.SourceTexture.Split('\\').Last();
             string names = string.Join(' ', placed.Chain.TakeLast(2).Append(shape.Name));
@@ -109,7 +110,8 @@ public static partial class MarkerDetector
                 Note: note,
                 EmissiveIsAnimated: animated,
                 FadeKeys: fadeKeys,
-                FadeInterpolation: fadeInterp));
+                FadeInterpolation: fadeInterp,
+                RadiusOverride: null));
         }
         return found;
     }
@@ -158,50 +160,4 @@ public static partial class MarkerDetector
         return (min, max);
     }
 
-    private sealed record Placement(float[] Rotation, float Scale, float[] Translation, List<string> Chain);
-
-    /// <summary>Accumulated transform per block, walked from the root node.</summary>
-    private static Dictionary<int, Placement> WorldTransforms(Nif nif)
-    {
-        var result = new Dictionary<int, Placement>();
-        var seen = new HashSet<int>();
-        var stack = new Stack<(int Index, Placement Parent)>();
-        stack.Push((0, new Placement([1, 0, 0, 0, 1, 0, 0, 0, 1], 1f, [0, 0, 0], [])));
-
-        while (stack.Count > 0)
-        {
-            var (i, parent) = stack.Pop();
-            if (i < 0 || i >= nif.BlockCount || !seen.Add(i)) continue;
-
-            Nif.AvObject av;
-            try { av = nif.ReadAvObject(i); }
-            catch { continue; }
-
-            var rotation = MatMul(parent.Rotation, av.Rotation);
-            var translation = Apply(parent.Rotation, parent.Scale, parent.Translation, av.Translation);
-            var chain = new List<string>(parent.Chain) { av.Name };
-            var placed = new Placement(rotation, parent.Scale * av.Scale, translation, chain);
-            result[i] = placed;
-
-            foreach (var child in av.Children) stack.Push((child, placed));
-        }
-        return result;
-    }
-
-    private static float[] MatMul(float[] a, float[] b)
-    {
-        var m = new float[9];
-        for (int r = 0; r < 3; r++)
-            for (int c = 0; c < 3; c++)
-                m[r * 3 + c] = a[r * 3] * b[c] + a[r * 3 + 1] * b[3 + c] + a[r * 3 + 2] * b[6 + c];
-        return m;
-    }
-
-    private static float[] Apply(float[] rot, float scale, float[] trans, float[] v)
-    {
-        var o = new float[3];
-        for (int r = 0; r < 3; r++)
-            o[r] = (rot[r * 3] * v[0] + rot[r * 3 + 1] * v[1] + rot[r * 3 + 2] * v[2]) * scale + trans[r];
-        return o;
-    }
 }
