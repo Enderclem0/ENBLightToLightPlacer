@@ -80,6 +80,16 @@ public class Settings
     public float RadiusPerParticleSizeUnit = 2.0f;
 
     /// <summary>
+    /// Global scale on particle-light brightness. The rest of the fade is
+    /// derived -- emissive multiple, peak particle alpha, how many particles
+    /// are alive at once, and the fade duty cycle -- but ENB applies its own
+    /// Intensity on top, about 0.4 in the preset ENB Light was tuned against,
+    /// and that is preset-level rather than mesh-level. This is the equivalent
+    /// dial.
+    /// </summary>
+    public float ParticleFadeScale = 1.0f;
+
+    /// <summary>
     /// Particle size past which ENB gives no further coverage: "Values above
     /// about 100 or so for Initial Size will make a bigger particle but will
     /// not increase light coverage." Every fire mesh measured 128 and so

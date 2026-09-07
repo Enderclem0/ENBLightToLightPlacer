@@ -98,7 +98,7 @@ public class Program
 
             var markers = MarkerDetector.Find(parsed);
             int quads = markers.Count;
-            markers.AddRange(ParticleLights.Find(parsed, 2.0f, 100f,
+            markers.AddRange(ParticleLights.Find(parsed, 2.0f, 100f, 1.0f,
                 m => Console.WriteLine($"         reject {m}")));
 
             Console.WriteLine($"  ok   {rel}  {bytes.Length} bytes, "
@@ -152,7 +152,8 @@ public class Program
                 markers = MarkerDetector.Find(parsed);
                 if (Config.EmitParticleSystemLights)
                     markers.AddRange(ParticleLights.Find(
-                        parsed, Config.RadiusPerParticleSizeUnit, Config.ParticleSizeSaturation));
+                        parsed, Config.RadiusPerParticleSizeUnit, Config.ParticleSizeSaturation,
+                        Config.ParticleFadeScale));
             }
             catch (Exception ex)
             {

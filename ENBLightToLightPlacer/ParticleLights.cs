@@ -32,6 +32,15 @@ namespace ENBLightToLightPlacer;
 ///   colour = emissive colour x peak modifier colour   (the texture is blank,
 ///            so unlike the quad convention it contributes nothing)
 ///   fade   = emissive multiple x peak modifier alpha
+///            x particles alive at once x fade duty cycle
+///
+/// One particle's alpha badly understates the result, because ENB is lighting
+/// from a cloud of overlapping particles. The guide gives the factor outright:
+/// "Particle birth rate * particle lifespan = number of particles alive on the
+/// screen at the same time" -- 12/s x 0.42s = 5.0 for the torch, 2/s x 3.0s =
+/// 6.0 for the lantern. It also notes brightness "depends on the FadeIn/Out
+/// values, meaning that the more fade there is, the shorter the particle stays
+/// at its full brightness", which is the duty cycle.
 ///   radius = k x min(InitialRadius x max scale, saturation)
 ///
 /// The saturation is the important part: "Values above about 100 or so for
@@ -53,11 +62,17 @@ public static class ParticleLights
     /// <summary>Same base, then fade-in/out and four colour percentages.</summary>
     private const int ColourModifierColoursOffset = 13 + 24;
 
+    /// <summary>NiPSysEmitter: initial radius at 53, life span at 61.</summary>
+    private const int EmitterLifeSpanOffset = 61;
+
+    /// <summary>NiPSysEmitterCtlr: NiTimeController is 26 bytes, then the interpolator.</summary>
+    private const int EmitterCtlrInterpolatorOffset = 26;
+
     /// <summary>NiPSysData: hasTextureIndices, then the subtexture count.</summary>
     private const int HasTextureIndicesOffset = 46;
 
     public static List<Marker> Find(Nif nif, float radiusPerUnit, float saturation,
-                                    Action<string>? log = null)
+                                    float fadeScale = 1f, Action<string>? log = null)
     {
         var transforms = Nif.WorldTransforms(nif);
         var found = new List<Marker>();
@@ -88,6 +103,9 @@ public static class ParticleLights
             var (peak, peakAlpha) = colour.Value;
             if (peak.Max() <= 0) continue;
 
+            float accumulation = ParticlesAlive(nif, index);
+            float duty = DutyCycle(nif, index);
+
             float size = EmitterSize(nif, index) * ScaleMultiplier(nif, index);
             if (size <= 0) { log?.Invoke($"[{index}] no emitter size"); continue; }
             float radius = radiusPerUnit * MathF.Min(size, saturation);
@@ -108,7 +126,8 @@ public static class ParticleLights
                 NodeName: placed.Chain.Count > 1 ? placed.Chain[^2] : nif.SafeName(index),
                 Texture: shader.SourceTexture.Split('\\').Last(),
                 Color: tint,
-                Fade: MathF.Round(shader.EmissiveMultiple * MathF.Max(peakAlpha, 0.05f), 3),
+                Fade: MathF.Round(shader.EmissiveMultiple * MathF.Max(peakAlpha, 0.05f)
+                                  * accumulation * duty * fadeScale, 3),
                 Point: [MathF.Round(placed.Translation[0], 2),
                         MathF.Round(placed.Translation[1], 2),
                         MathF.Round(placed.Translation[2], 2)],
@@ -220,6 +239,61 @@ public static class ParticleLights
             var b = nif.Block(j);
             if (b.Length < EmitterInitialRadiusOffset + 4) continue;
             return BinaryPrimitives.ReadSingleLittleEndian(b[EmitterInitialRadiusOffset..]);
+        }
+        return 0;
+    }
+
+
+    /// <summary>
+    /// Particles alive at once: birth rate x life span. The birth rate is the
+    /// emitter controller's interpolator value; when that is animated the mean
+    /// of its keys is the honest stand-in. Clamped, because a runaway count
+    /// would swamp every other light in the scene.
+    /// </summary>
+    private static float ParticlesAlive(Nif nif, int psys)
+    {
+        float life = EmitterField(nif, psys, EmitterLifeSpanOffset);
+        if (life <= 0) return 1f;
+
+        int controller = nif.ControllerRef(psys);
+        if (controller < 0 || controller >= nif.BlockCount) return 1f;
+        if (!nif.BlockType(controller).EndsWith("EmitterCtlr", StringComparison.Ordinal)) return 1f;
+
+        var cb = nif.Block(controller);
+        if (cb.Length < EmitterCtlrInterpolatorOffset + 4) return 1f;
+        int interp = BinaryPrimitives.ReadInt32LittleEndian(cb[EmitterCtlrInterpolatorOffset..]);
+        float rate = nif.InterpolatorValue(interp);
+        if (rate <= 0) return 1f;
+
+        return Math.Clamp(rate * life, 1f, 30f);
+    }
+
+    /// <summary>
+    /// How much of its life the particle spends at full brightness. Ramping in
+    /// over fadeIn and out after fadeOut averages to half of each ramp.
+    /// </summary>
+    private static float DutyCycle(Nif nif, int psys)
+    {
+        int j = FindModifier(nif, psys, "BSPSysSimpleColorModifier");
+        if (j < 0) return 1f;
+        var b = nif.Block(j);
+        if (b.Length < 21) return 1f;
+        float fadeIn = BinaryPrimitives.ReadSingleLittleEndian(b[13..]);
+        float fadeOut = BinaryPrimitives.ReadSingleLittleEndian(b[17..]);
+        if (fadeIn < 0 || fadeOut > 1 || fadeOut < fadeIn) return 1f;
+        return Math.Clamp(0.5f * (1f + fadeOut - fadeIn), 0.1f, 1f);
+    }
+
+    private static float EmitterField(Nif nif, int psys, int offset)
+    {
+        foreach (var type in new[] { "NiPSysSphereEmitter", "NiPSysCylinderEmitter",
+                                     "NiPSysBoxEmitter", "NiPSysMeshEmitter" })
+        {
+            int j = FindModifier(nif, psys, type);
+            if (j < 0) continue;
+            var b = nif.Block(j);
+            if (b.Length < offset + 4) continue;
+            return BinaryPrimitives.ReadSingleLittleEndian(b[offset..]);
         }
         return 0;
     }

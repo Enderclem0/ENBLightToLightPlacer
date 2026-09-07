@@ -250,6 +250,53 @@ public sealed class Nif
         return (shader, alpha);
     }
 
+    /// <summary>NiObjectNET's controller reference.</summary>
+    public int ControllerRef(int i)
+    {
+        try
+        {
+            var c = new Cursor(Block(i));
+            c.Skip(4);
+            int extras = (int)c.U32();
+            c.Skip(4 * extras);
+            return c.I32();
+        }
+        catch { return -1; }
+    }
+
+    /// <summary>
+    /// A float interpolator's value: the constant if it has one, otherwise the
+    /// mean of its keys. A NiFloatInterpolator holding the -3.4e38 sentinel is
+    /// animated, and its data block carries the real values.
+    /// </summary>
+    public float InterpolatorValue(int i)
+    {
+        if (i < 0 || i >= BlockCount) return 0;
+        if (BlockType(i) != "NiFloatInterpolator") return 0;
+        var b = Block(i);
+        if (b.Length < 8) return 0;
+
+        float value = BinaryPrimitives.ReadSingleLittleEndian(b);
+        if (MathF.Abs(value) < 1e30f) return value;
+
+        int dataRef = BinaryPrimitives.ReadInt32LittleEndian(b[4..]);
+        if (dataRef < 0 || dataRef >= BlockCount || BlockType(dataRef) != "NiFloatData") return 0;
+        var db = Block(dataRef);
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(db);
+        uint keyType = BinaryPrimitives.ReadUInt32LittleEndian(db[4..]);
+        int stride = keyType switch { 2 => 16, 3 => 20, _ => 8 };
+        float total = 0;
+        int seen = 0;
+        for (int k = 0; k < count; k++)
+        {
+            int off = 8 + k * stride;
+            if (off + 8 > db.Length) break;
+            total += BinaryPrimitives.ReadSingleLittleEndian(db[(off + 4)..]);
+            seen++;
+        }
+        return seen > 0 ? total / seen : 0;
+    }
+
     public string SafeName(int i)
     {
         try
