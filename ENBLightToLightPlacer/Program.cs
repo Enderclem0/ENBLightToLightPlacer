@@ -114,7 +114,7 @@ public class Program
 
         foreach (var model in models.OrderBy(m => m, StringComparer.OrdinalIgnoreCase))
         {
-            if (Config.SkipActorMeshes && model.StartsWith(@"actors\", StringComparison.OrdinalIgnoreCase))
+            if (!Config.IncludeActorMeshes && model.StartsWith(@"actors\", StringComparison.OrdinalIgnoreCase))
                 continue;
             if (Config.ExcludePathsContaining.Any(x =>
                     x.Length > 0 && model.Contains(x, StringComparison.OrdinalIgnoreCase)))

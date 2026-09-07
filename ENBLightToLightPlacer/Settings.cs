@@ -87,11 +87,17 @@ public class Settings
     ];
 
     /// <summary>
-    /// Skip meshes under actors\. Their markers are eye glows and wisp bodies,
-    /// so this puts a light on every draugr, dragon priest and witchlight --
-    /// one per actor, since each of those meshes carries a single marker.
+    /// Read meshes under actors\ too. Their markers are eye glows and wisp
+    /// bodies, so this lights every draugr, dragon priest and witchlight --
+    /// two lights on the eye meshes, one per eye.
+    ///
+    /// Deliberately renamed from SkipActorMeshes rather than flipped in place.
+    /// Synthesis persists settings per patcher, and a saved value wins over a
+    /// changed default forever: the old file kept SkipActorMeshes=true from the
+    /// first run, so flipping the default silently did nothing. A new key has
+    /// no saved entry, so the default here is what actually applies.
     /// </summary>
-    public bool SkipActorMeshes = false;
+    public bool IncludeActorMeshes = true;
 
     /// <summary>
     /// Skip models that another LightPlacer JSON already covers, so an object
