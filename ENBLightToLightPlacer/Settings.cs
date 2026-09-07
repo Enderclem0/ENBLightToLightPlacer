@@ -67,14 +67,18 @@ public class Settings
     public bool EmitFadeControllers = true;
 
     /// <summary>
-    /// Fade to use when a marker's emissive multiple is 0 but a controller
-    /// animates it -- the Dwemer control cubes, whose glow is driven by an
-    /// animation sequence. The curve is not readable from the mesh (the
-    /// interpolator holds an "unset" sentinel and the keys live in a
-    /// NiControllerSequence chosen at runtime), so this is a stand-in for a
-    /// value we cannot measure. Set 0 to skip those markers instead.
+    /// What to do with a marker whose emissive multiple is 0 because an
+    /// animation drives it and the keys are out of reach -- the Dwemer control
+    /// cubes, whose curve lives in whichever NiControllerSequence the game
+    /// selects ('Idle', 'Forward', 'Left', 'Backward' for the Nchardak puzzle).
+    ///
+    /// **0 means skip them, and that is the default.** Their brightness is
+    /// state-dependent, so any single constant is wrong in some state, and a
+    /// wrong port is worse than no port: the object still has whatever vanilla
+    /// lighting it always had. Set a positive value to emit them at that fade
+    /// instead.
     /// </summary>
-    public float AnimatedEmissiveFade = 1.0f;
+    public float AnimatedEmissiveFade = 0f;
 
     /// <summary>
     /// Floor on the estimated radius. The power law was fitted from half-size
