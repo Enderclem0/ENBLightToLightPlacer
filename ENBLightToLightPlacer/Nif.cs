@@ -166,6 +166,73 @@ public sealed class Nif
         return false;
     }
 
+    /// <summary>One key of an emissive-multiple animation.</summary>
+    public readonly record struct FloatKey(float Time, float Value, float Forward, float Backward);
+
+    /// <summary>
+    /// The keyframes driving the emissive multiple, if they are reachable.
+    ///
+    /// Reachable means the controller points at a NiFloatInterpolator with
+    /// NiFloatData behind it -- the hagraven hanging balls and spriggan taproots
+    /// pulse 0.8 -> 1.2 -> 0.8 over three seconds this way. It is NOT reachable
+    /// when the interpolator is a NiBlendFloatInterpolator (the Dwemer control
+    /// cubes): that is a runtime blend target holding an "unset" sentinel, and
+    /// the real keys sit in whichever NiControllerSequence the animation system
+    /// selects.
+    ///
+    /// NiFloatData: numKeys, then the key type -- 1 linear (time, value),
+    /// 2 quadratic (plus forward and backward tangents), 3 TBC (plus tension,
+    /// bias, continuity, which we read as linear since Light Placer has no
+    /// equivalent).
+    /// </summary>
+    public List<FloatKey>? ReadEmissiveFadeKeys(int controllerRef, out string interpolation)
+    {
+        interpolation = "Linear";
+        int guard = 0;
+        for (int c = controllerRef; c >= 0 && c < BlockCount && guard++ < 32;)
+        {
+            var cb = Block(c);
+            if (cb.Length < 34) return null;
+            if (BlockType(c) != "BSEffectShaderPropertyFloatController"
+                || BinaryPrimitives.ReadUInt32LittleEndian(cb[30..]) != 0)
+            {
+                c = BinaryPrimitives.ReadInt32LittleEndian(cb);
+                continue;
+            }
+
+            int interp = BinaryPrimitives.ReadInt32LittleEndian(cb[26..]);
+            if (interp < 0 || interp >= BlockCount) return null;
+            if (BlockType(interp) != "NiFloatInterpolator") return null;
+
+            int dataRef = BinaryPrimitives.ReadInt32LittleEndian(Block(interp)[4..]);
+            if (dataRef < 0 || dataRef >= BlockCount || BlockType(dataRef) != "NiFloatData") return null;
+
+            var db = Block(dataRef);
+            uint count = BinaryPrimitives.ReadUInt32LittleEndian(db);
+            uint keyType = BinaryPrimitives.ReadUInt32LittleEndian(db[4..]);
+            int stride = keyType switch { 2 => 16, 3 => 20, _ => 8 };
+            interpolation = keyType == 2 ? "Cubic" : "Linear";
+
+            var keys = new List<FloatKey>();
+            for (int k = 0; k < count; k++)
+            {
+                int off = 8 + k * stride;
+                if (off + stride > db.Length) break;
+                float time = BinaryPrimitives.ReadSingleLittleEndian(db[off..]);
+                float value = BinaryPrimitives.ReadSingleLittleEndian(db[(off + 4)..]);
+                float fwd = 0f, back = 0f;
+                if (keyType == 2)
+                {
+                    fwd = BinaryPrimitives.ReadSingleLittleEndian(db[(off + 8)..]);
+                    back = BinaryPrimitives.ReadSingleLittleEndian(db[(off + 12)..]);
+                }
+                keys.Add(new FloatKey(time, value, fwd, back));
+            }
+            return keys.Count > 0 ? keys : null;
+        }
+        return null;
+    }
+
     public sealed class Shape
     {
         public int Index;

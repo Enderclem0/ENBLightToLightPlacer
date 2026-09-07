@@ -11,7 +11,9 @@ public sealed record Marker(
     float[] Point,
     float HalfSize,
     string Note,
-    bool EmissiveIsAnimated);
+    bool EmissiveIsAnimated,
+    List<Nif.FloatKey>? FadeKeys,
+    string FadeInterpolation);
 
 /// <summary>
 /// Finds ENB particle-light marker quads and converts what they encode into
@@ -89,7 +91,9 @@ public static partial class MarkerDetector
             }
 
             var (colour, note) = Colour(vertex, shader.EmissiveColor);
-            bool animated = shader.EmissiveMultiple <= 0
+            var fadeKeys = nif.ReadEmissiveFadeKeys(shader.ControllerRef, out var fadeInterp);
+            bool animated = fadeKeys == null
+                            && shader.EmissiveMultiple <= 0
                             && nif.HasAnimatedEmissiveMultiple(shader.ControllerRef);
             float half = 0.5f * Math.Max(ext[0], ext[1]) * placed.Scale;
 
@@ -103,7 +107,9 @@ public static partial class MarkerDetector
                         MathF.Round(placed.Translation[2], 2)],
                 HalfSize: MathF.Round(half, 1),
                 Note: note,
-                EmissiveIsAnimated: animated));
+                EmissiveIsAnimated: animated,
+                FadeKeys: fadeKeys,
+                FadeInterpolation: fadeInterp));
         }
         return found;
     }

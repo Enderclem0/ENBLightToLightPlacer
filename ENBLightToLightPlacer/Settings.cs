@@ -60,6 +60,13 @@ public class Settings
     public float MaxEstimatedRadius = 120f;
 
     /// <summary>
+    /// Transcribe a mesh's emissive keyframes into Light Placer's fadeController
+    /// so the light pulses the way the glow does, instead of sitting at a
+    /// constant. Light Placer's format is a direct match for NiFloatData.
+    /// </summary>
+    public bool EmitFadeControllers = true;
+
+    /// <summary>
     /// Fade to use when a marker's emissive multiple is 0 but a controller
     /// animates it -- the Dwemer control cubes, whose glow is driven by an
     /// animation sequence. The curve is not readable from the mesh (the

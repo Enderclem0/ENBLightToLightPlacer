@@ -76,7 +76,11 @@ public class Program
                 Console.WriteLine(
                     $"  node={m.NodeName} tex={m.Texture} colour=({string.Join(',', m.Color)}) "
                     + $"fade={m.Fade} point=({string.Join(',', m.Point)}) half={m.HalfSize}"
-                    + (m.EmissiveIsAnimated ? " [emissive animated]" : "")
+                    + (m.EmissiveIsAnimated ? " [emissive animated, keys unreachable]" : "")
+                    + (m.FadeKeys is { Count: > 0 }
+                        ? $" [{m.FadeInterpolation} curve: "
+                          + string.Join(" ", m.FadeKeys.Select(k => $"{k.Time}s={k.Value}")) + "]"
+                        : "")
                     + (m.Note.Length > 0 ? $" [{m.Note}]" : ""));
             }
         }
@@ -112,7 +116,7 @@ public class Program
 
         var assets = new AssetResolver(state.GameRelease, state.DataFolderPath);
         var entries = new List<LightEntry>();
-        int read = 0, withMarker = 0, flagged = 0, skippedCovered = 0, animatedFade = 0;
+        int read = 0, withMarker = 0, flagged = 0, skippedCovered = 0, animatedFade = 0, animatedCurves = 0;
 
         foreach (var model in models.OrderBy(m => m, StringComparer.OrdinalIgnoreCase))
         {
@@ -178,6 +182,27 @@ public class Program
                     if (rule.Fade > 0) fade = rule.Fade;
                 }
 
+                FadeController? controller = null;
+                if (Config.EmitFadeControllers && marker.FadeKeys is { Count: > 0 })
+                {
+                    controller = new FadeController
+                    {
+                        Interpolation = marker.FadeInterpolation,
+                        Keys = marker.FadeKeys.Select(k => new FadeKey
+                        {
+                            Time = MathF.Round(k.Time, 4),
+                            Value = MathF.Round(k.Value, 4),
+                            Forward = MathF.Round(k.Forward, 4),
+                            Backward = MathF.Round(k.Backward, 4),
+                        }).ToList(),
+                    };
+                    // The keys carry the absolute brightness, so leave fade
+                    // neutral: that reads correctly whether Light Placer
+                    // replaces fade with the curve or multiplies by it.
+                    fade = 1.0f;
+                    animatedCurves++;
+                }
+
                 lights.Add(new Light
                 {
                     Data = new LightData
@@ -187,6 +212,7 @@ public class Program
                         Fade = MathF.Round(fade, 3),
                         Radius = MathF.Round(radius, 1),
                         Flags = Config.LightFlags,
+                        FadeController = controller,
                     },
                     Points = [marker.Point],
                 });
@@ -231,6 +257,8 @@ public class Program
         Console.WriteLine();
         Console.WriteLine($"read {read} meshes, {withMarker} carried an ENB marker, "
                           + $"{entries.Sum(e => e.Lights.Count)} lights, {flagged} flagged for review");
+        if (animatedCurves > 0)
+            Console.WriteLine($"{animatedCurves} lights got a fadeController read from the mesh");
         if (animatedFade > 0)
             Console.WriteLine($"{animatedFade} markers had an animated emissive; "
                               + $"used fade {Config.AnimatedEmissiveFade}");
@@ -375,6 +403,23 @@ public class Program
         [JsonPropertyName("fade")] public float Fade { get; set; }
         [JsonPropertyName("radius")] public float Radius { get; set; }
         [JsonPropertyName("flags")] public string Flags { get; set; } = "";
+
+        [JsonPropertyName("fadeController")]
+        public FadeController? FadeController { get; set; }
+    }
+
+    private sealed class FadeController
+    {
+        [JsonPropertyName("interpolation")] public string Interpolation { get; set; } = "Linear";
+        [JsonPropertyName("keys")] public List<FadeKey> Keys { get; set; } = [];
+    }
+
+    private sealed class FadeKey
+    {
+        [JsonPropertyName("time")] public float Time { get; set; }
+        [JsonPropertyName("value")] public float Value { get; set; }
+        [JsonPropertyName("forward")] public float Forward { get; set; }
+        [JsonPropertyName("backward")] public float Backward { get; set; }
     }
 }
 
